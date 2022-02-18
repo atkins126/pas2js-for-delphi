@@ -18,12 +18,14 @@
 }
 unit Pas2JSCompilerPP;
 
-{$I pas2js_defines.inc}
+{$IFNDEF Pas2JS}
+{$I delphi_defines.inc}
+{$ENDIF}
 
 interface
 
 uses
-  Classes, SysUtils, pas2jscompiler, jswriter, FPPJSSrcMap, contnrs, StrUtils;
+  Classes, SysUtils, pas2jscompiler, jswriter, FPPJSSrcMap, contnrs;
 
 Type
 
@@ -40,12 +42,15 @@ Type
     Procedure WriteUsedTools; override;
     Procedure AddPostProcessor(const Cmd: String); override;
     Procedure CallPostProcessors(const JSFileName: String; aWriter: TPas2JSMapper); override;
-    function Execute(const JSFilename: String; Cmd: TStringList; JS: TJSWriterString): TJSWriterString;
+    function Execute(const JSFilename: String; Cmd: TStringList; JS: UTF8String): UTF8String;
   end;
 
 implementation
 
 uses
+  {$IFNDEF pas2js}
+  StrUtils,
+  {$ENDIF}
   process, pas2jslogger, pas2jsutils, pas2jsfileutils;
 
 function TPas2JSFSPostProcessorSupport.CmdListAsStr(CmdList: TStrings): string;
@@ -115,24 +120,25 @@ procedure TPas2JSFSPostProcessorSupport.CallPostProcessors(const JSFileName: Str
 
 var
   i: Integer;
-  JS, OrigJS: TJSWriterString;
+  JS, OrigJS: UTF8String;
 
 begin
   if FPostProcs.Count=0 then exit;
-  OrigJS:=aWriter.AsString;
+  OrigJS := UTF8Encode(aWriter.AsString);
   JS:=OrigJS;
   for i:=0 to FPostProcs.Count-1 do
     JS:=Execute(JSFilename,TStringList(FPostProcs[i]),JS);
   if JS<>OrigJS then
   begin
-    aWriter.AsString:=JS;
+    aWriter.AsString := UTF8ToString(JS);
     if aWriter.SrcMap<>nil then
       aWriter.SrcMap.Clear;
   end;
 
 end;
 
-function TPas2JSFSPostProcessorSupport.Execute(const JSFilename: String; Cmd: TStringList; JS: TJSWriterString): TJSWriterString;
+function TPas2JSFSPostProcessorSupport.Execute(const JSFilename: String; Cmd: TStringList; JS: UTF8String): UTF8String;
+
 const
   BufSize = 65536;
 var
@@ -249,7 +255,8 @@ begin
     else HandleJSException('[20181118170506] TPas2jsCompiler.CallPostProcessor Cmd: '+CmdListAsStr(Cmd),JSExceptValue,true);
     {$ENDIF}
   end;
-  if CurExitCode<>0 then begin
+  if CurExitCode<>0 then
+  begin
     Compiler.Log.LogMsg(nPostProcessorFailX,[CmdListAsStr(Cmd)]);
     Compiler.Terminate(ExitCodeToolError);
   end;

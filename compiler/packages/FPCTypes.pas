@@ -2,34 +2,49 @@
   Copied from system.pas, systemh.inc
 *)
 
-Unit FPCTypes;
+unit FPCTypes;
 
-Interface
+{$I delphi_defines.inc}
+
+interface
 
 uses
   Types;
 
 const
-  FPC_FULLVERSION = 30004;
-  DirectorySeparator = '\';
-  AllowDirectorySeparators : set of AnsiChar = ['\','/'];
-{$IFNDEF HAS_FILENAMELEN}
-  FileNameLen = 255;
-{$ENDIF HAS_FILENAMELEN}
-  AllFilesMask = '*';
-  PathSeparator = ';';
+  FPC_FULLVERSION = 30202;
   LineEnding = #13#10;
+  LFNSupport = True;
+  DirectorySeparator = '\';
+  DriveSeparator = ':';
+  ExtensionSeparator = '.';
+  PathSeparator = ';';
+  AllowDirectorySeparators: set of AnsiChar = ['\','/'];
+  AllowDriveSeparators: set of AnsiChar = [':'];
+  maxExitCode = 65535;
+  MaxPathLen = 260;
+  AllFilesMask = '*';
   ECMAScript = 5;
+
+  { some values which are used in RTL for TSystemCodePage type }
+  CP_ACP     = 0;     // default to ANSI code page
+  CP_OEMCP   = 1;     // default to OEM (console) code page
+  CP_UTF16   = 1200;  // utf-16
+  CP_UTF16BE = 1201;  // unicodeFFFE
+  CP_UTF7    = 65000; // utf-7
+  CP_UTF8    = 65001; // utf-8
+  CP_ASCII   = 20127; // us-ascii
   CP_NONE    = $FFFF; // rawbytestring encoding
-  b00011111 = $1F;
-  b00100000 = $20;
-  b10000000 = $80;
-  b11000000 = $C0;
-  b11100000 = $E0;
-  b11110000 = $F0;
-  b11111000 = $F8;
 
 type
+  { The compiler has all integer types defined internally. Here
+    we define only aliases }
+  DWord    = LongWord;
+  QWord    = UInt64;
+  UnicodeChar = WideChar;
+  PUnicodeChar = PWideChar;
+  TSystemCodePage = Word;
+
 {$ifdef CPU64}
   SizeInt = Int64;
   SizeUInt = QWord;
@@ -40,7 +55,10 @@ type
   CodePointer = Pointer;
   CodePtrInt = PtrInt;
   CodePtrUInt = PtrUInt;
-{$ELSE}
+  TExitCode = Longint;
+{$endif CPU64}
+
+{$ifdef CPU32}
   SizeInt = Longint;
   SizeUInt = DWord;
   PtrInt = Longint;
@@ -50,26 +68,27 @@ type
   CodePointer = Pointer;
   CodePtrInt = PtrInt;
   CodePtrUInt = PtrUInt;
+  TExitCode = Longint;
 {$endif CPU32}
-  QWord = UInt64;
-  UnicodeChar = WideChar;
-  PUnicodeChar = PWideChar;
-  TSystemCodePage = Word;
 
   //PathStr = string[FileNameLen];
   PathStr = string;
   TStringArray = array of string;
 
-Function SetDirSeparators(Const FileName : PathStr) : PathStr;
+function SetDirSeparators(Const FileName : PathStr) : PathStr;
 function BoolToStr(B: Boolean;UseBoolStrs:Boolean=False): string; overload;
 function BoolToStr(B: boolean; const TrueS, FalseS: string): string; overload;
 function HexStr(Val: Int64; Cnt: Byte): string;
-function StrToQWord(const s: string): QWord;
+function StrToQWord(const s: string): QWord; inline;
 function TryStrToQWord(const s: string; Out Q : QWord) : boolean;
 function TryStringToGUID(const S: string; out Guid: TGUID): Boolean;
 function MethodPointersEqual(const MethodPointer1, MethodPointer2): Boolean;
+procedure MyVal(const S: string; out V: Int64; out Code: Integer);
 
-Implementation
+resourcestring
+  SListIndexError               = 'List index (%d) out of bounds';
+
+implementation
 
 uses
   SysUtils;
@@ -77,7 +96,7 @@ uses
 type
   ObjpasInt = LongInt;
 
-Procedure DoDirSeparators(Var FileName : PathStr);
+procedure DoDirSeparators(Var FileName : PathStr);
 var
   I : longint;
 begin
@@ -86,7 +105,7 @@ begin
       FileName[i]:=DirectorySeparator;
 end;
 
-Function SetDirSeparators (Const FileName : PathStr) : PathStr;
+function SetDirSeparators (Const FileName : PathStr) : PathStr;
 begin
   Result:=FileName;
   DoDirSeparators (Result);
@@ -210,6 +229,32 @@ var
   Method2: System.TMethod absolute MethodPointer2;
 begin
   Result := (Method1.Code=Method2.Code) and (Method1.Data=Method2.Data)
+end;
+
+// Converts a binary value in string representation ('%11111') to an integer
+// For Delphi 10.4 and below. Delphi 11 supports binary constants.
+procedure BinToInt(const S: string; out V: Int64; out Code: Integer);
+begin
+  V := 0;
+  Code := Length(S);
+  if Code > SizeOf(V)*8+1 then
+    Exit;
+  while Code > 1 do begin
+    case S[Code] of
+      '0', '1': V := V or Byte(S[Code] = '1') shl (Length(S)-Code);
+      else Exit;
+    end;
+    Dec(Code);
+  end;
+  Dec(Code);
+end;
+
+procedure MyVal(const S: string; out V: Int64; out Code: Integer);
+begin
+  if (Length(S) >= 2) and (S[1] = '%') then
+    BinToInt(S, V, Code)
+  else
+    Val(S, V, Code);
 end;
 
 end.
